@@ -1,0 +1,17 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.log
+._*
+
+results/*.json
+ablation_results/*.json
+rst_workspaces/*
+!rst_workspaces/.gitkeep
+proposition_workspace_diagnostic/
+
+# GitHub blocks files over 100 MB. Put full raw dumps in external storage or Git LFS.
+Datasets/Corpus/hotpotqa_distractor_all.json
+2wiki/train.json
