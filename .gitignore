@@ -6,11 +6,42 @@ __pycache__/
 *.log
 ._*
 
-results/*.json
-ablation_results/*.json
+# Generated experiment outputs and workspaces
+results/*
+!results/.gitkeep
 rst_workspaces/*
 !rst_workspaces/.gitkeep
+framework_workspaces/
+ablation_results/
 proposition_workspace_diagnostic/
+*.sqlite
+*.parquet
+*.pickle
+*.graphml
+graph.graphml
+vector_store.json
+weak_index.json
+
+# Local baseline checkouts are not needed for this RST-only package.
+LinearRAG/
+PropRAG/
+Runner_Novel/
+HippoRAG/*
+!HippoRAG/reproduce/
+!HippoRAG/reproduce/**
+HippoRAG/reproduce/README.md
+
+# Local experimental runners outside the clean RST package.
+benchmark_dataset_adapter.py
+run_all_methods_medical.py
+run_all_methods_novel.py
+run_hipporag_datasets.py
+run_linearrag_datasets.py
+run_proprag_datasets.py
+run_rst_bridge_eval.py
+Datasets/Corpus/tiny_smoke.json
+Datasets/Questions/tiny_smoke.json
+Datasets/Questions/novel_30752_test.json
 
 # GitHub blocks files over 100 MB. Put full raw dumps in external storage or Git LFS.
 Datasets/Corpus/hotpotqa_distractor_all.json

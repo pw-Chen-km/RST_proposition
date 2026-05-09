@@ -1,10 +1,14 @@
-from typing import List, Dict
+import json
+import re
+from typing import List, Dict, Union
 
 import numpy as np
 from langchain_core.callbacks import Callbacks
 from langchain_core.language_models import BaseLanguageModel
 
 from Evaluation.metrics.utils import JSONHandler
+
+EVIDENCE_SPLIT_PATTERN = re.compile(r"(?:\s*;\s*|\n+)(?=(?:[A-Z0-9\"'(\[]|$))")
 
 EVIDENCE_RECALL_PROMPT = """
 ### Task
@@ -49,7 +53,7 @@ Question: "{question}" (for reference only)
 async def compute_evidence_recall(
     question: str,
     contexts: List[str],
-    reference_evidence: List[str],
+    reference_evidence: Union[List[str], str],
     llm: BaseLanguageModel,
     callbacks: Callbacks = None,
     max_retries: int = 2
@@ -70,10 +74,26 @@ async def compute_evidence_recall(
     if not context_str.strip():
         return 0.0
 
+    if isinstance(reference_evidence, str):
+        evidence_items = [
+            evidence.strip()
+            for evidence in EVIDENCE_SPLIT_PATTERN.split(reference_evidence.strip())
+            if evidence.strip()
+        ]
+    else:
+        evidence_items = [
+            str(evidence).strip()
+            for evidence in reference_evidence
+            if str(evidence).strip()
+        ]
+
+    if not evidence_items:
+        return np.nan
+
     prompt = EVIDENCE_RECALL_PROMPT.format(
         question=question,
         context=context_str[:20000],  # Truncate long contexts # TODO : smarter truncation
-        evidence=reference_evidence,  # Truncate long answers TODO how?
+        evidence=json.dumps(evidence_items, ensure_ascii=False),  # Truncate long answers TODO how?
     )
 
     # Get LLM classification with retries

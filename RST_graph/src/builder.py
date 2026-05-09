@@ -75,57 +75,82 @@ class RSTGraphBuilder:
         if isinstance(texts, str):
             texts = [texts]
 
+        chunks: List[str] = []
         for text in texts:
-            for chunk in split_text(text):
-                chunk_id = hashlib.md5(chunk.encode("utf-8")).hexdigest()
-                if self.doc_storage.get(chunk_id):
-                    continue
+            chunks.extend(split_text(text))
+        total_chunks = len(chunks)
+        print(
+            f"[RST build] 建圖中：{total_chunks} 個 chunk；完成前只存在記憶體，最後一次寫入 "
+            f"graph / vector_store / doc_chunks",
+            flush=True,
+        )
 
-                self.doc_storage.upsert(chunk_id, {"content": chunk})
+        for idx, chunk in enumerate(chunks, start=1):
+            chunk_id = hashlib.md5(chunk.encode("utf-8")).hexdigest()
+            short_id = chunk_id[:8]
+            if self.doc_storage.get(chunk_id):
+                print(f"[RST build] {idx}/{total_chunks} 已快取，略過 ({short_id})", flush=True)
+                continue
 
-                extraction = await self.extract(chunk)
-                nodes = extraction.get("nodes", [])
-                edges = extraction.get("edges", [])
-                if not nodes:
-                    continue
+            print(
+                f"[RST build] {idx}/{total_chunks} 正在呼叫 LLM 抽取命題… ({short_id})",
+                flush=True,
+            )
+            self.doc_storage.upsert(chunk_id, {"content": chunk})
 
-                node_names = [node["entity_name"] for node in nodes]
-                embeddings = []
-                for i in range(0, len(node_names), 50):
-                    embeddings.extend(await self.embed(node_names[i : i + 50]))
+            extraction = await self.extract(chunk)
+            nodes = extraction.get("nodes", [])
+            edges = extraction.get("edges", [])
+            if not nodes:
+                print(
+                    f"[RST build] {idx}/{total_chunks} LLM 未回傳節點，略過寫圖 ({short_id})",
+                    flush=True,
+                )
+                continue
 
-                for i, node in enumerate(nodes):
-                    node_name = node["entity_name"]
-                    self.graph_storage.upsert_node(
-                        node_name,
+            node_names = [node["entity_name"] for node in nodes]
+            embeddings = []
+            for i in range(0, len(node_names), 50):
+                embeddings.extend(await self.embed(node_names[i : i + 50]))
+
+            for i, node in enumerate(nodes):
+                node_name = node["entity_name"]
+                self.graph_storage.upsert_node(
+                    node_name,
+                    {
+                        "entity_type": node["entity_type"],
+                        "description": node.get("description", ""),
+                        "source_id": chunk_id,
+                    },
+                )
+                if i < len(embeddings) and embeddings[i]:
+                    self.vector_storage.upsert(
                         {
+                            "id": node_name,
+                            "content": node_name,
                             "entity_type": node["entity_type"],
-                            "description": node.get("description", ""),
-                            "source_id": chunk_id,
-                        },
-                    )
-                    if i < len(embeddings) and embeddings[i]:
-                        self.vector_storage.upsert(
-                            {
-                                "id": node_name,
-                                "content": node_name,
-                                "entity_type": node["entity_type"],
-                                "embedding": embeddings[i],
-                            }
-                        )
-
-                for edge in edges:
-                    self.graph_storage.upsert_edge(
-                        edge["source"],
-                        edge["target"],
-                        {
-                            "keywords": edge.get("keywords", ""),
-                            "weight": edge.get("weight", 1.0),
-                            "description": edge.get("description", ""),
-                            "source_id": chunk_id,
-                        },
+                            "embedding": embeddings[i],
+                        }
                     )
 
+            for edge in edges:
+                self.graph_storage.upsert_edge(
+                    edge["source"],
+                    edge["target"],
+                    {
+                        "keywords": edge.get("keywords", ""),
+                        "weight": edge.get("weight", 1.0),
+                        "description": edge.get("description", ""),
+                        "source_id": chunk_id,
+                    },
+                )
+
+            print(
+                f"[RST build] {idx}/{total_chunks} 已寫入圖（nodes={len(nodes)} edges={len(edges)}）",
+                flush=True,
+            )
+
+        print("[RST build] 正在將 workspace 固化到磁碟（graphml / json / weak_index）…", flush=True)
         self.doc_storage.save()
         self.graph_storage.save()
         self.vector_storage.save()
@@ -134,3 +159,4 @@ class RSTGraphBuilder:
         weak_index.build(self.graph_storage.graph, ner=self.ner)
         weak_index.save(self.workspace_dir)
         logger.info("RST graph workspace built at %s", self.workspace_dir)
+        print(f"[RST build] 建圖完成：{self.workspace_dir}", flush=True)

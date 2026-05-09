@@ -39,6 +39,27 @@ def group_questions_by_source(questions: List[Dict[str, Any]]) -> Dict[str, List
     return grouped
 
 
+EVIDENCE_SPLIT_PATTERN = re.compile(r"(?:\s*;\s*|\n+)(?=(?:[A-Z0-9\"'(\[]|$))")
+
+
+def evidence_items(question_item: Dict[str, Any]) -> List[str]:
+    existing_items = question_item.get("evidence_items")
+    if isinstance(existing_items, list):
+        return [str(item).strip() for item in existing_items if str(item).strip()]
+
+    evidence = question_item.get("evidence", "")
+    if isinstance(evidence, list):
+        return [str(item).strip() for item in evidence if str(item).strip()]
+    if not isinstance(evidence, str):
+        return [str(evidence).strip()] if str(evidence).strip() else []
+
+    return [
+        item.strip()
+        for item in EVIDENCE_SPLIT_PATTERN.split(evidence.strip())
+        if item.strip()
+    ]
+
+
 def corpus_by_source(corpus_items: Any) -> Dict[str, Dict[str, Any]]:
     if isinstance(corpus_items, dict):
         corpus_items = [corpus_items]
@@ -129,6 +150,7 @@ async def run_source_questions(
             "generated_answer": answer,
             "context": [retrieved_context],
             "evidence": item.get("evidence", ""),
+            "evidence_items": evidence_items(item),
             "question_type": item.get("question_type", "Complex Reasoning"),
             "dataset": item.get("dataset"),
             "original_id": item.get("original_id"),

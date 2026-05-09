@@ -3,7 +3,9 @@ import argparse
 import json
 import numpy as np
 import os
+import re
 from typing import Dict, List, Any
+from dotenv import load_dotenv
 from langchain_core.language_models import BaseLanguageModel
 from langchain_core.embeddings import Embeddings
 from datasets import Dataset
@@ -15,6 +17,28 @@ from langchain_ollama import OllamaEmbeddings
 from Evaluation.llm import OllamaClient,OllamaWrapper
 
 SEED = 42
+load_dotenv()
+
+EVIDENCE_SPLIT_PATTERN = re.compile(r"(?:\s*;\s*|\n+)(?=(?:[A-Z0-9\"'(\[]|$))")
+
+
+def normalize_evidence_items(item: Dict[str, Any]) -> List[str]:
+    """Return gold evidence as individual statements for recall scoring."""
+    evidence_items = item.get("evidence_items")
+    if isinstance(evidence_items, list):
+        return [str(evidence).strip() for evidence in evidence_items if str(evidence).strip()]
+
+    evidence = item.get("evidence", "")
+    if isinstance(evidence, list):
+        return [str(evidence_item).strip() for evidence_item in evidence if str(evidence_item).strip()]
+    if not isinstance(evidence, str):
+        return [str(evidence).strip()] if str(evidence).strip() else []
+
+    return [
+        evidence_item.strip()
+        for evidence_item in EVIDENCE_SPLIT_PATTERN.split(evidence.strip())
+        if evidence_item.strip()
+    ]
 
 async def evaluate_dataset(
     dataset: Dataset,
@@ -127,15 +151,13 @@ async def main(args: argparse.Namespace):
     """Main retrieval evaluation function"""
     if args.mode == "API":
         # Check API key
-        if not os.getenv("LLM_API_KEY"):
-            raise ValueError("LLM_API_KEY environment variable is not set")
+        api_key = os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("Set LLM_API_KEY or OPENAI_API_KEY before running API evaluation")
         
         # Initialize models
         # Wrap API key in SecretStr to satisfy type hints
         from pydantic import SecretStr
-        api_key = os.getenv("LLM_API_KEY")
-        if not api_key:
-            raise ValueError("LLM_API_KEY environment variable is not set")
         llm = ChatOpenAI(
             model=args.model,
             base_url=args.base_url,
@@ -201,7 +223,7 @@ async def main(args: argparse.Namespace):
 
         ids = [item['id'] for item in group_items]
         questions = [item['question'] for item in group_items]
-        evidences = [item['evidence'] for item in group_items]
+        evidences = [normalize_evidence_items(item) for item in group_items]
         contexts = [item['context'] for item in group_items]
         
         # Create dataset

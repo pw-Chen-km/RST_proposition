@@ -15,7 +15,6 @@ class PipelineTask:
     eval_output_file: str
     workspace_dir: str
     source: Optional[str] = None
-    smoke_source: Optional[str] = None
 
 
 TASKS = [
@@ -45,24 +44,6 @@ TASKS = [
         output_file="results/rst_musique.json",
         eval_output_file="results/eval_generation_musique.json",
         workspace_dir="rst_workspaces/pipeline/hipporag",
-    ),
-    PipelineTask(
-        name="medical",
-        corpus_file="Datasets/Corpus/medical.json",
-        questions_file="Datasets/Questions/medical_questions.json",
-        source="Medical",
-        output_file="results/rst_medical.json",
-        eval_output_file="results/eval_generation_medical.json",
-        workspace_dir="rst_workspaces/pipeline/medical",
-    ),
-    PipelineTask(
-        name="novel",
-        corpus_file="Datasets/Corpus/novel.json",
-        questions_file="Datasets/Questions/novel_questions.json",
-        smoke_source="Novel-30752",
-        output_file="results/rst_novel.json",
-        eval_output_file="results/eval_generation_novel.json",
-        workspace_dir="rst_workspaces/pipeline/novel",
     ),
 ]
 
@@ -109,9 +90,8 @@ def build_inference_command(task: PipelineTask, args: argparse.Namespace) -> Lis
         str(args.max_bfs_depth),
     ]
 
-    source = task.smoke_source if args.smoke and task.smoke_source else task.source
-    if source:
-        cmd += ["--source", source]
+    if task.source:
+        cmd += ["--source", task.source]
 
     limit = args.smoke_questions if args.smoke else args.limit
     if limit:

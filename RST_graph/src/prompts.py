@@ -51,10 +51,13 @@ Instead, extract an operational discourse graph for retrieval and reasoning:
 
    **Node Output Format**
    Output 3 fields per node, delimited by `{{tuple_delimiter}}`, on one line.
-   The first field must be the literal string `entity` for system compatibility only. It does NOT mean named entity.
+   The first field must be the literal string `NODE` (type marker).
 
    Format:
-   `entity{{tuple_delimiter}}canonical_proposition{{tuple_delimiter}}node_role`
+   `NODE{{tuple_delimiter}}canonical_proposition{{tuple_delimiter}}node_role`
+   
+   Example:
+   `NODE{{tuple_delimiter}}The peninsula gradually rises toward the interior.{{tuple_delimiter}}Context`
 
 2. **Relationship Extraction (Two-Stage Filtering)**
    After node boundaries are fixed, identify direct rhetorical dependency relations between previously extracted proposition nodes.
@@ -95,10 +98,21 @@ Instead, extract an operational discourse graph for retrieval and reasoning:
 
    **Relation Output Format**
    Output 4 fields per relation, delimited by `{{tuple_delimiter}}`, on one line.
-   The first field must be the literal string `relation`.
+   The first field must be the literal string `REL` (type marker).
+   
+   **CRITICAL RULES for source and target:**
+   - source and target MUST be EXACT copies of canonical_proposition strings from the NODE lines above
+   - DO NOT use placeholder words like `entity`, `NODE`, `source_node`, `target_node`, or any abbreviated form
+   - If you cannot find the exact proposition text for source or target, SKIP this relation entirely
 
    Format:
-   `relation{{tuple_delimiter}}source_node{{tuple_delimiter}}target_node{{tuple_delimiter}}relation_family`
+   `REL{{tuple_delimiter}}EXACT_SOURCE_PROPOSITION{{tuple_delimiter}}EXACT_TARGET_PROPOSITION{{tuple_delimiter}}relation_family`
+   
+   Example (CORRECT):
+   `REL{{tuple_delimiter}}The peninsula gradually rises toward the interior.{{tuple_delimiter}}The peninsula reaches a maximum height.{{tuple_delimiter}}SUPPORTS`
+   
+   Example (WRONG - will be rejected):
+   `REL{{tuple_delimiter}}entity{{tuple_delimiter}}The peninsula reaches a maximum height.{{tuple_delimiter}}SUPPORTS`
 
 3. **Role Assignment Guidelines**
    - `Claim`: an asserted interpretation, judgment, conclusion, position, or discourse-level characterization that could be supported, explained, or challenged
