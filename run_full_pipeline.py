@@ -6,6 +6,23 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 
+def inference_output_path(task_output_file: str, bridging_budget: int, smoke: bool) -> str:
+    """rst_hotpotqa.json -> rst_hotpotqa_b0.json (or *_b0_smoke.json in smoke mode)."""
+    root, ext = os.path.splitext(task_output_file)
+    if ext != ".json":
+        ext = ".json"
+    mid = f"{root}_b{bridging_budget}"
+    return f"{mid}_smoke{ext}" if smoke else f"{mid}{ext}"
+
+
+def eval_output_path(task_eval_file: str, bridging_budget: int, smoke: bool) -> str:
+    root, ext = os.path.splitext(task_eval_file)
+    if ext != ".json":
+        ext = ".json"
+    mid = f"{root}_b{bridging_budget}"
+    return f"{mid}_smoke{ext}" if smoke else f"{mid}{ext}"
+
+
 @dataclass
 class PipelineTask:
     name: str
@@ -66,10 +83,10 @@ def run_command(cmd: List[str], env: dict, dry_run: bool) -> None:
     subprocess.run(cmd, check=True, env=env)
 
 
-def build_inference_command(task: PipelineTask, args: argparse.Namespace) -> List[str]:
-    output_file = task.output_file
-    if args.smoke:
-        output_file = output_file.replace(".json", "_smoke.json")
+def build_inference_command(
+    task: PipelineTask, args: argparse.Namespace, bridging_budget: int
+) -> List[str]:
+    output_file = inference_output_path(task.output_file, bridging_budget, args.smoke)
 
     cmd = [
         sys.executable,
@@ -85,7 +102,7 @@ def build_inference_command(task: PipelineTask, args: argparse.Namespace) -> Lis
         "--max_passages_per_source",
         str(args.smoke_passages if args.smoke else args.max_passages_per_source),
         "--bridging_budget",
-        str(args.bridging_budget),
+        str(bridging_budget),
         "--max_bfs_depth",
         str(args.max_bfs_depth),
     ]
@@ -103,12 +120,11 @@ def build_inference_command(task: PipelineTask, args: argparse.Namespace) -> Lis
     return cmd
 
 
-def build_eval_command(task: PipelineTask, args: argparse.Namespace) -> List[str]:
-    data_file = task.output_file
-    eval_output_file = task.eval_output_file
-    if args.smoke:
-        data_file = data_file.replace(".json", "_smoke.json")
-        eval_output_file = eval_output_file.replace(".json", "_smoke.json")
+def build_eval_command(
+    task: PipelineTask, args: argparse.Namespace, bridging_budget: int
+) -> List[str]:
+    data_file = inference_output_path(task.output_file, bridging_budget, args.smoke)
+    eval_output_file = eval_output_path(task.eval_output_file, bridging_budget, args.smoke)
 
     cmd = [
         sys.executable,
@@ -147,7 +163,22 @@ def main() -> None:
     parser.add_argument("--smoke_eval_samples", type=int, default=1)
     parser.add_argument("--max_passages_per_source", type=int, default=0, help="0 means full corpus context.")
     parser.add_argument("--limit", type=int, default=None, help="Optional question limit per selected task.")
-    parser.add_argument("--bridging_budget", type=int, default=3)
+    parser.add_argument(
+        "--bridging_budgets",
+        nargs="+",
+        type=int,
+        default=[0, 3],
+        help=(
+            "Run inference + eval once per bridging budget. "
+            "Outputs are suffixed _b{N} under results/. Default: 0 3."
+        ),
+    )
+    parser.add_argument(
+        "--bridging_budget",
+        type=int,
+        default=None,
+        help="If set, overrides --bridging_budgets and runs only this single budget.",
+    )
     parser.add_argument("--max_bfs_depth", type=int, default=2)
     parser.add_argument("--use_expansion", action="store_true")
     parser.add_argument("--force_rebuild", action="store_true")
@@ -169,12 +200,21 @@ def main() -> None:
     # Keep generation_eval on the requested local/HF embedding path.
     env.pop("LLM_API_KEY", None)
 
+    budgets = (
+        [args.bridging_budget]
+        if args.bridging_budget is not None
+        else list(args.bridging_budgets)
+    )
+    if not budgets:
+        raise ValueError("bridging_budgets must contain at least one integer.")
+
     for task in selected_tasks(args.datasets):
-        print(f"\n=== {task.name.upper()} ===", flush=True)
-        if not args.skip_inference:
-            run_command(build_inference_command(task, args), env, args.dry_run)
-        if not args.skip_eval:
-            run_command(build_eval_command(task, args), env, args.dry_run)
+        for b in budgets:
+            print(f"\n=== {task.name.upper()} (bridging_budget={b}) ===", flush=True)
+            if not args.skip_inference:
+                run_command(build_inference_command(task, args, b), env, args.dry_run)
+            if not args.skip_eval:
+                run_command(build_eval_command(task, args, b), env, args.dry_run)
 
     print("\nPipeline complete.", flush=True)
 
