@@ -84,7 +84,10 @@ def run_command(cmd: List[str], env: dict, dry_run: bool) -> None:
 
 
 def build_inference_command(
-    task: PipelineTask, args: argparse.Namespace, bridging_budget: int
+    task: PipelineTask,
+    args: argparse.Namespace,
+    bridging_budget: int,
+    force_rebuild: bool,
 ) -> List[str]:
     output_file = inference_output_path(task.output_file, bridging_budget, args.smoke)
 
@@ -113,7 +116,7 @@ def build_inference_command(
     limit = args.smoke_questions if args.smoke else args.limit
     if limit:
         cmd += ["--limit", str(limit)]
-    if args.force_rebuild:
+    if force_rebuild:
         cmd.append("--force_rebuild")
     if args.use_expansion:
         cmd.append("--use_expansion")
@@ -209,10 +212,15 @@ def main() -> None:
         raise ValueError("bridging_budgets must contain at least one integer.")
 
     for task in selected_tasks(args.datasets):
-        for b in budgets:
+        for budget_index, b in enumerate(budgets):
             print(f"\n=== {task.name.upper()} (bridging_budget={b}) ===", flush=True)
             if not args.skip_inference:
-                run_command(build_inference_command(task, args, b), env, args.dry_run)
+                force_rebuild = args.force_rebuild and budget_index == 0
+                run_command(
+                    build_inference_command(task, args, b, force_rebuild),
+                    env,
+                    args.dry_run,
+                )
             if not args.skip_eval:
                 run_command(build_eval_command(task, args, b), env, args.dry_run)
 
